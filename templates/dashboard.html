@@ -298,15 +298,49 @@
                 });
             }
 
-            var isCorrect = false;
+            // Robust normalization mapping option strings back to A, B, C...
+            var revMap = {};
+            if (q.options) {
+                q.options.forEach(function(opt, idx) {
+                    var letter = String.fromCharCode(65 + idx);
+                    var cleanOpt = opt.replace(/^[A-Z][\.\)\s]+/, '').trim().toLowerCase();
+                    revMap[cleanOpt] = letter;
+                    revMap[opt.trim().toLowerCase()] = letter;
+                });
+            }
+            function norm(ans) {
+                if (!ans) return "";
+                var s = String(ans).trim();
+                if (/^[A-Z]$/i.test(s)) return s.toUpperCase();
+                var lower = s.toLowerCase();
+                if (revMap[lower]) return revMap[lower];
+                for (var key in revMap) {
+                    if (key.indexOf(lower) !== -1 || lower.indexOf(key) !== -1) return revMap[key];
+                }
+                return s.toUpperCase();
+            }
+
+            var expectedAnswers = [];
+            var rawAns = q.answer;
             if (q.type === "multiple") {
-                if (userAnswer && userAnswer.length > 0 && q.answer && q.answer.length > 0) {
-                    var sortedUser = userAnswer.slice().sort();
-                    var sortedCorrect = q.answer.slice().sort();
-                    isCorrect = JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
+                if (Array.isArray(rawAns)) {
+                    expectedAnswers = rawAns.map(norm);
+                } else if (typeof rawAns === "string") {
+                    expectedAnswers = rawAns.split(',').map(norm);
                 }
             } else {
-                isCorrect = (userAnswer === q.answer);
+                expectedAnswers = [norm(rawAns)];
+            }
+            
+            var isCorrect = false;
+            if (q.type === "multiple") {
+                var safeUser = userAnswer || [];
+                var sortedUser = safeUser.map(norm).sort();
+                var sortedCorrect = expectedAnswers.sort();
+                isCorrect = JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
+            } else {
+                var safeUser = userAnswer || "";
+                isCorrect = (norm(safeUser) === expectedAnswers[0]);
             }
 
             var feedbackDiv = $("#feedback_" + index);

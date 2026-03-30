@@ -102,20 +102,67 @@
             return;
         }
 
+        // --- NEW: Robust Answer Normalization ---
+        var revMap = {};
+        block.find('label').each(function() {
+            var inputType = $(this).find('input').attr('type');
+            if(inputType === 'radio' || inputType === 'checkbox') {
+                var letter = $(this).find('input').val();
+                var text = $(this).text().trim();
+                var cleanOpt = text.replace(/^[A-Z][\.\)\s]+/, '').trim().toLowerCase();
+                if(letter && letter.length === 1 && typeof letter === 'string') {
+                    revMap[cleanOpt] = letter.toUpperCase();
+                    revMap[text.toLowerCase()] = letter.toUpperCase();
+                }
+            }
+        });
+        
+        function norm(ans) {
+            if (!ans) return "";
+            var s = String(ans).trim();
+            if (/^[A-Z]$/i.test(s)) return s.toUpperCase();
+            var lower = s.toLowerCase();
+            if (revMap[lower]) return revMap[lower];
+            for (var key in revMap) {
+                if (key.indexOf(lower) !== -1 || lower.indexOf(key) !== -1) return revMap[key];
+            }
+            return s.toUpperCase();
+        }
+
+        var expectedAnswers = [];
+        var rawAns = correctAnswer;
+        if (qType === "multiple") {
+             if (Array.isArray(rawAns)) {
+                 expectedAnswers = rawAns.map(norm);
+             } else if (typeof rawAns === "string") {
+                 try {
+                     var parsed = JSON.parse(rawAns);
+                     if(Array.isArray(parsed)) expectedAnswers = parsed.map(norm);
+                     else expectedAnswers = rawAns.split(',').map(norm);
+                 }catch(e){
+                     expectedAnswers = rawAns.split(',').map(norm);
+                 }
+             }
+        } else {
+             if(typeof rawAns === 'string' && rawAns.startsWith('[') && rawAns.endsWith(']')){
+                 try {
+                     var parsed = JSON.parse(rawAns);
+                     expectedAnswers = [norm(parsed[0])];
+                 } catch(e) { expectedAnswers = [norm(rawAns)]; }
+             } else {
+                 expectedAnswers = [norm(rawAns)];
+             }
+        }
+
         var isCorrect = false;
         if (qType === "multiple") {
-            var sortedUser = userAnswer.slice().sort();
-            var sortedCorrect = [];
-            if (Array.isArray(correctAnswer)) {
-                sortedCorrect = correctAnswer.slice().sort();
-            } else if (typeof correctAnswer === 'string') {
-                try {
-                    sortedCorrect = JSON.parse(correctAnswer).slice().sort();
-                } catch(e) {}
-            }
+            var safeUser = userAnswer || [];
+            var sortedUser = safeUser.map(norm).sort();
+            var sortedCorrect = expectedAnswers.sort();
             isCorrect = JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
         } else {
-            isCorrect = (userAnswer == correctAnswer);
+            var safeUser = userAnswer || "";
+            isCorrect = (norm(safeUser) === expectedAnswers[0]);
         }
 
         feedbackDiv.removeClass("correct incorrect");
