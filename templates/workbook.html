@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Workbook (練習本){% endblock %}
+
+{% block content %}
+<div class="workspace" style="max-width: 800px; margin: 40px auto; min-height: 80vh;">
+    {% if not current_project %}
+        <h2 style="color: var(--primary); margin-bottom: 20px;"><span style="margin-right: 8px;">📖</span> 請選擇練習本</h2>
+        <p>請選擇您要複習的專案：</p>
+        
+        <ul style="list-style: none; padding: 0;">
+            {% for dir in directories %}
+                <li style="margin-bottom: 12px;">
+                    <a href="{{ url_for('workbook', project_id=dir.id) }}" class="project-link" style="display: block; font-size: 18px; padding: 16px;">
+                        📁 {{ dir.name }} 練習本
+                    </a>
+                </li>
+            {% endfor %}
+            {% if not directories %}
+                <p style="color: #666; font-style: italic; text-align: center; margin-top: 40px;">您目前沒有建立任何專案。</p>
+            {% endif %}
+        </ul>
+
+    {% else %}
+        <h2 style="color: var(--primary); margin-bottom: 15px;"><span style="margin-right:8px;">📖</span> {{ current_project.name }} - 練習本</h2>
+        <p style="color: var(--text-muted); font-size: 15px;">以下是您在此專案中收藏的題目，隨時可以在這裡複習與作答。</p>
+        <a href="{{ url_for('workbook') }}" class="btn btn-outline" style="margin-bottom: 25px;">&larr; 返回列表</a>
+
+        <div id="workbook-area">
+        {% if questions %}
+            {% for q in questions %}
+                <div class='question-block' data-question-id='{{ q.id }}' data-question-type='{{ q.type }}'>
+                    
+                    <button class='remove-question-btn btn btn-outline' data-id='{{ q.id }}' style='position:absolute; right:15px; top:15px; padding: 6px 12px; font-size: 14px; border-color: transparent; color: var(--danger);' title='取消收藏'>❌ Remove</button>
+                    
+                    <h3 style='margin-right: 90px;'> Q{{ loop.index }}: {{ q.question }}</h3>
+
+                    {% if q.type == 'boolean' %}
+                        {% for opt in ["True", "False"] %}
+                            <label>
+                                <input type='radio' name='question_{{ q.id }}' value='{{ opt }}'> {{ opt }}
+                            </label>
+                        {% endfor %}
+                    {% else %}
+                        {% for opt in q.options %}
+                            {% set letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[loop.index0] %}
+                            <label>
+                                <input type='{{ "checkbox" if q.type == "multiple" else "radio" }}' name='question_{{ q.id }}' value='{{ letter }}'> 
+                                {% if opt is string and (opt.startswith(letter ~ '.') or opt.startswith(letter ~ ' ') or opt.startswith(letter ~ ')')) %}
+                                    {{ opt }}
+                                {% else %}
+                                    {{ letter }}. {{ opt }}
+                                {% endif %}
+                            </label>
+                        {% endfor %}
+                    {% endif %}
+
+                    <button class='check-answer-btn btn btn-info' data-id='{{ q.id }}' style='margin-top: 15px;'>🔍 Check Answer</button>
+
+                    <!-- 將正確答案藏在 data 屬性 -->
+                    <div class='feedback' id='feedback_{{ q.id }}'
+                         data-answer='{{ q.answer | tojson | forceescape }}' data-explanation='{{ q.explanation }}'></div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="color: #666; font-style: italic; text-align: center; margin-top: 40px;">您在此專案尚未收藏任何題目。請先到 Dashboard 生成題目並點擊旁邊的「⭐ Save」按鈕！</p>
+        {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 核對作答
+    $(document).on('click', '.check-answer-btn', function() {
+        var id = $(this).data('id');
+        var block = $(this).closest('.question-block');
+        var qType = block.data('question-type');
+        var feedbackDiv = $('#feedback_' + id);
+        
+        var answerDataStr = feedbackDiv.attr('data-answer');
+        var correctAnswer = null;
+        try {
+            correctAnswer = JSON.parse(answerDataStr);
+        } catch (e) {
+            correctAnswer = answerDataStr; 
+        }
+        var explanation = feedbackDiv.attr('data-explanation');
+        
+        var userAnswer;
+        if (qType === "single" || qType === "boolean") {
+            userAnswer = $("input[name='question_" + id + "']:checked").val();
+        } else if (qType === "multiple") {
+            userAnswer = [];
+            $("input[name='question_" + id + "']:checked").each(function() {
+                userAnswer.push($(this).val());
+            });
+        }
+        
+        if (userAnswer === undefined || (Array.isArray(userAnswer) && userAnswer.length === 0)) {
+            alert("請先作答！");
+            return;
+        }
+
+        var isCorrect = false;
+        if (qType === "multiple") {
+            var sortedUser = userAnswer.slice().sort();
+            var sortedCorrect = [];
+            if (Array.isArray(correctAnswer)) {
+                sortedCorrect = correctAnswer.slice().sort();
+            } else if (typeof correctAnswer === 'string') {
+                try {
+                    sortedCorrect = JSON.parse(correctAnswer).slice().sort();
+                } catch(e) {}
+            }
+            isCorrect = JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
+        } else {
+            isCorrect = (userAnswer == correctAnswer);
+        }
+
+        feedbackDiv.removeClass("correct incorrect");
+        var feedbackHtml = "";
+        
+        if (isCorrect) {
+            feedbackDiv.addClass("correct");
+            feedbackHtml += "<p><strong>✅ Correct！</strong></p>";
+        } else {
+            feedbackDiv.addClass("incorrect");
+            feedbackHtml += "<p><strong>❌ Wrong！</strong></p>";
+        }
+
+        feedbackHtml += "<p><strong>📌 Answer：</strong> " + (Array.isArray(correctAnswer) ? correctAnswer.join(", ") : correctAnswer) + "</p>";
+
+        if (explanation && explanation !== 'None') {
+            feedbackHtml += "<p><strong>📖 Detail：</strong> " + explanation + "</p>";
+        }
+
+        feedbackDiv.html(feedbackHtml);
+        feedbackDiv.slideDown();
+    });
+
+    // 刪除題目
+    $(document).on('click', '.remove-question-btn', function() {
+        if (!confirm("確定要將此題從練習本移除嗎？")) return;
+        
+        var btn = $(this);
+        var id = btn.data('id');
+        var block = btn.closest('.question-block');
+        
+        $.ajax({
+            url: "/api/delete_question/" + id,
+            type: "DELETE",
+            success: function(response) {
+                if(response.success) {
+                    block.fadeOut(function() {
+                        $(this).remove();
+                        if ($('.question-block').length === 0) {
+                            $('#workbook-area').html('<p style="color: #666; font-style: italic; text-align: center; margin-top: 40px;">您尚未收藏任何題目。請先到 Dashboard 生成題目並點擊旁邊的「⭐ Save」按鈕！</p>');
+                        } else {
+                            // 重新編號
+                            $('.question-block h3').each(function(index) {
+                                // 提取原本的題目文字 (去除 P. X:)
+                                var text = $(this).text();
+                                var match = text.match(/:\s*(.*)/);
+                                if (match) {
+                                  $(this).text(" Q" + (index + 1) + ": " + match[1]);
+                                }
+                            });
+                        }
+                    });
+                }
+            },
+            error: function(xhr) {
+                alert("刪除失敗：" + xhr.responseText);
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}File Preview{% endblock %}
+{% block content %}
+<div class="preview-container">
+    <h2>File Name：{{ file.filename }}</h2>
+    {% if is_pdf %}
+        <!-- iframe embeded PDF -->
+        <iframe src="{{ file_url }}" width="100%" height="600px" style="border: none;"></iframe>
+    {% else %}
+        <div class="file-content">
+            <pre>{{ content }}</pre>
+        </div>
+    {% endif %}
+    <a href="{{ url_for('dashboard') }}">Return Control Panel</a>
+</div>
+{% endblock %}

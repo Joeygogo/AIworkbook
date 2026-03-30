@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}myQuickQuiz{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 載入 jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    {% block head %}{% endblock %}
+    <script>
+        const storedTheme = localStorage.getItem('theme');
+        if (storedTheme) {
+            document.documentElement.setAttribute('data-theme', storedTheme);
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+</head>
+<body>
+    <nav>
+        <div class="logo">myQuickQuiz</div>
+        <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}">Home</a>
+            <a href="{{ url_for('workbook') }}">Workbook</a>
+            <a href="{{ url_for('about') }}">About</a>
+            <a href="{{ url_for('logout') }}" onclick="return confirm('確定要登出嗎？')">Logout</a>
+            <button id="theme-toggle" class="btn btn-outline" style="margin-left: 20px; padding: 6px 12px; font-size: 14px;" title="切換深/淺色模式">🌙</button>
+        </div>
+    </nav>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                    {% for category, message in messages %}
+                        <li class="flash {{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    
+    <script>
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        
+        function updateToggleButton(theme) {
+            if(themeToggleBtn) {
+                themeToggleBtn.textContent = (theme === 'dark') ? '☀️' : '🌙';
+            }
+        }
+
+        if (document.documentElement.getAttribute('data-theme') === 'dark') {
+            updateToggleButton('dark');
+        }
+
+        if(themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                let currentTheme = document.documentElement.getAttribute('data-theme');
+                let newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateToggleButton(newTheme);
+            });
+        }
+    </script>    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

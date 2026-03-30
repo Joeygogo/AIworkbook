@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}About myQuickQuiz{% endblock %}
+{% block content %}
+<div class="about-container">
+  <h2>About myQuickQuiz</h2>
+  <p>This system is a self-test platform that integrates programming and AI, designed to help users review learning content and generate self-assessment questions. You can upload files, preview them, and use AI to generate test questions, making it easier to organize your study materials.</p>
+  <p>Please be mindful of the copyright guidelines when uploading files and use them primarily for self-learning purposes.</p>
+  <p>This platform is the Final Project for the CS50 course, and there are still many areas for improvement. For example: the accuracy of the questions, the correctness of the answers, and the support for various document formats, among other aspects.</p>
+  <p>If you encounter any of the above issues, this platform and its author bear no responsibility. Please review and confirm before using.</p>
+  <p>Thank you very much.</p>
+  <a href="{{ url_for('dashboard') }}">Return Control Panel</a>
+</div>
+{% endblock %}

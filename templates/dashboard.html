@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% block title %}QmyQuickQuiz{% endblock %}
+{% block content %}
+<div class="dashboard">
+    <div class="sidebar" style="overflow-y: auto;">
+        <!-- Project List Section -->
+        <h3>Projects (專案)</h3>
+        <ul class="project-list">
+            {% for dir in directories %}
+                <li>
+                    <a href="{{ url_for('dashboard', project_id=dir.id) }}" class="project-link {% if current_project and current_project.id == dir.id %}active{% endif %}">
+                        📁 {{ dir.name }}
+                    </a>
+                    
+                    <div style="display: flex; margin-left: 5px; gap: 5px;">
+                        <form id="rename-form-{{ dir.id }}" action="{{ url_for('rename_project', project_id=dir.id) }}" method="POST" style="display: none;">
+                            <input type="hidden" name="new_name" id="new-name-{{ dir.id }}">
+                        </form>
+                        
+                        <a href="{{ url_for('workbook', project_id=dir.id) }}" title="進入練習本" class="btn btn-info btn-icon">📖</a>
+                        
+                        <button type="button" class="btn btn-warning btn-icon" title="重新命名" onclick="renameProject({{ dir.id }}, '{{ dir.name }}')">✎</button>
+                        
+                        <form action="{{ url_for('delete_project', project_id=dir.id) }}" method="POST" style="margin-bottom: 0;">
+                            <button type="submit" class="btn btn-danger btn-icon" title="刪除專案" onclick="return confirm('⚠️ 危險操作！確定要刪除整個專案包含裡面的所有檔案嗎？')">🗑</button>
+                        </form>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+        <form method="POST" action="{{ url_for('create_project') }}" style="display: flex; gap: 8px; margin-bottom: 25px; margin-top: 15px;">
+            <input type="text" name="project_name" placeholder="New Project..." required style="flex: 1;">
+            <button type="submit" class="btn btn-success">+ New</button>
+        </form>
+
+        <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border);">
+
+        <!-- File Upload Section for Current Project -->
+        <h3>Upload to: {% if current_project %}{{ current_project.name }}{% endif %}</h3>
+        <form method="post" action="{{ url_for('upload_file') }}" enctype="multipart/form-data" class="upload-form">
+            <input type="hidden" name="directory_id" value="{% if current_project %}{{ current_project.id }}{% endif %}">
+            <input type="file" name="file" id="file-input" required hidden multiple>
+            <label for="file-input" class="btn btn-outline">Select File</label>
+            <span id="file-name-display" style="display: none; font-size: 14px; color: var(--text-muted);">None Selected</span>
+            <button type="submit" class="btn btn-primary" id="upload-btn" style="display: none; width: 100%; margin-top: 10px;">Upload to Server</button>
+        </form>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; margin-bottom: 15px;">
+            <h3 style="margin: 0;">Files in Project</h3>
+            {% if files %}
+            <label style="cursor: pointer; font-size: 14px; color: var(--text-main); font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                <input type="checkbox" id="select-all-files"> Select All
+            </label>
+            {% endif %}
+        </div>
+        <ul id="file-list">
+            {% for file in files %}
+                <li class="file-item">
+                    <input type="checkbox" class="file-checkbox" value="{{ file.id }}">
+                    <a href="#" class="file-name preview-link" data-file-id="{{ file.id }}">{{ file.filename }}</a>
+                    <form action="{{ url_for('delete_file', file_id=file.id) }}" method="POST" class="delete-form" style="margin-bottom:0;">
+                        <button type="submit" class="btn btn-danger btn-icon" title="刪除檔案" onclick="return confirm('Sure to Delete This File?')">🗑</button>
+                    </form>
+                </li>
+            {% endfor %}
+            {% if not files %}
+                <li style="color: #888; text-align: center; padding: 10px; font-size: 14px;">No files yet.</li>
+            {% endif %}
+        </ul>
+    </div>
+    <div class="workspace">
+        <h2 style="color: var(--primary); margin-bottom: 25px;"><span style="margin-right:8px;">📖</span>{% if current_project %}{{ current_project.name }}{% else %}No Project{% endif %}</h2>
+        <div class="question-settings" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 8px;">Single-Choice:
+                <input type="number" id="num-single" name="num_single" value="1" min="0" style="width:70px;">
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px;">Multiple-Choice:
+                <input type="number" id="num-multiple" name="num_multiple" value="1" min="0" style="width:70px;">
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px;">True/False：
+                <input type="number" id="num-boolean" name="num_boolean" value="1" min="0" style="width:70px;">
+            </label>
+        </div>
+        <button id="generate-test-btn" class="btn btn-primary" style="font-size: 16px; padding: 12px 24px;">✨ AI Generate Test Questions</button>
+        <div id="test-area" style="margin-top: 30px;">
+            <!-- Questions will list here -->
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div id="preview-modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.6);">
+    <div style="background-color:#fff; margin:5% auto; padding:20px; border-radius:8px; width:80%; max-width:800px; max-height:85vh; display:flex; flex-direction:column; position:relative;">
+        <span id="close-modal" style="position:absolute; right:20px; top:15px; font-size:28px; cursor:pointer; color:#888;">&times;</span>
+        <h2 id="modal-title" style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:10px;">File Preview</h2>
+        <div id="modal-body" style="flex:1; overflow-y:auto; margin-top:10px;">
+            <p style="text-align:center;">Loading loading...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Select All Checkbox Logic
+    const selectAllCheckbox = document.getElementById('select-all-files');
+    if (selectAllCheckbox) {
+        const fileCheckboxes = document.querySelectorAll('.file-checkbox');
+        
+        selectAllCheckbox.addEventListener('change', function() {
+            fileCheckboxes.forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+        });
+
+        fileCheckboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (!this.checked) {
+                    selectAllCheckbox.checked = false;
+                } else {
+                    const allChecked = Array.from(fileCheckboxes).every(c => c.checked);
+                    selectAllCheckbox.checked = allChecked;
+                }
+            });
+        });
+    }
+
+    document.getElementById("file-input").addEventListener("change", function() {
+        var fileCount = this.files.length;
+        var fileName = "尚未選擇檔案";
+        if (fileCount === 1) {
+            fileName = this.files[0].name;
+        } else if (fileCount > 1) {
+            fileName = fileCount + " files selected";
+        }
+
+        // Show file name
+        var fileNameDisplay = document.getElementById("file-name-display");
+        fileNameDisplay.textContent = fileName;
+        fileNameDisplay.style.display = "inline-block";
+
+        // Show upload btn
+        var uploadBtn = document.getElementById("upload-btn");
+        if (fileCount > 0) {
+            uploadBtn.style.display = "inline-block";
+        } else {
+            uploadBtn.style.display = "none";
+            fileNameDisplay.style.display = "none";
+        }
+    });
+
+    // Flash for 1.5 sec
+    setTimeout(function() {
+        var flashes = document.querySelectorAll('.flash');
+        flashes.forEach(function(flash) {
+            flash.style.transition = "opacity 0.5s ease-out";
+            flash.style.opacity = "0";
+            setTimeout(() => flash.remove(), 500);
+        });
+    }, 1500);
+
+    // Set AJAX no timeout
+    $.ajax({
+        url: "/generate_test",
+        type: "POST",
+        data: { key: "value" },
+        timeout: 0,
+        success: function(response) {
+            console.log("Request success:", response);
+        },
+        error: function(xhr, textStatus) {
+            console.log("Request failed:", textStatus);
+        }
+    });
+
+    // AI generation btn
+    $('#generate-test-btn').click(function() {
+        //console.log("開始出題按鈕被點擊");
+        var selectedFiles = [];
+        $('.file-checkbox:checked').each(function() {
+            selectedFiles.push($(this).val());
+        });
+        //console.log("選取的檔案ID:", selectedFiles);
+        if(selectedFiles.length === 0) {
+            alert("Please select at least one file from the left side");
+            return;
+        }
+
+        // loading UI
+        var loaderHtml = `
+            <div class="modern-loader" style="margin-top: 20px;">
+                <div class="spinner"></div>
+                <p>✨ AI 正在努力為您閱讀文件並生成專屬測驗中，請稍候...</p>
+            </div>
+        `;
+        $('#test-area').html(loaderHtml);
+
+        // AJAX request
+        $.post("/generate_test", {
+            "file_ids": selectedFiles,
+            "num_single": $('#num-single').val(),
+            "num_multiple": $('#num-multiple').val(),
+            "num_boolean": $('#num-boolean').val()
+        }, function(response) {
+            //console.log("後端回應:", response);
+
+            var testData = response.test;
+            if (typeof testData === 'string') {
+                var startIndex = testData.indexOf('{');
+                var endIndex = testData.lastIndexOf('}');
+                if (startIndex !== -1 && endIndex !== -1) {
+                    testData = testData.substring(startIndex, endIndex + 1);
+                }
+                try {
+                    testData = JSON.parse(testData);
+                } catch(e) {
+                    //console.error("解析 JSON 出錯:", e);
+                    $('#test-area').html('<pre>JSON Parsing Error:\\n' + testData + '</pre>');
+                    return;
+                }
+            }
+
+            if (!testData.questions) {
+                //console.error("解析後的資料中未包含 questions 屬性", testData);
+                $('#test-area').html('<pre>' + JSON.stringify(testData, null, 2) + '</pre>');
+                return;
+            }
+
+            window.questionsData = testData;
+            var html = renderQuestions(testData);
+            $('#test-area').html(html);
+        }).fail(function(xhr) {
+            $('#test-area').html(''); // 清除動畫
+            //console.error("產生測驗題目失敗", xhr);
+            alert("Failed to generate test questions." + xhr.responseJSON.error);
+        });
+    });
+
+    $(document).on('click', '#submit-answers-btn', function() {
+        checkAnswers();
+    });
+
+    // transfer Json to HTML
+    function renderQuestions(data) {
+        var html = "<br>";
+        if (!data.questions || data.questions.length === 0) {
+            return "<p>No questions were generated.</p>";
+        }
+        data.questions.forEach(function(q, index){
+            html += "<div class='question-block' data-question-index='" + index + "'>";
+            
+            // 收藏按鈕
+            html += "<button class='save-question-btn btn btn-outline' data-index='" + index + "' style='position:absolute; right:15px; top:15px; padding: 6px 12px; font-size: 14px;' title='收藏此題'>⭐ Save</button>";
+            
+            html += "<h3 style='margin-right: 90px;'> P. " + (index + 1) + ": " + q.question + "</h3>";
+
+            if (q.type === "boolean") {
+                ["True", "False"].forEach(function(opt) {
+                    html += "<label><input type='radio' name='question_" + index + "' value='" + opt + "'> " + opt + "</label>";
+                });
+            } else {
+                var isMultiple = (q.type === "multiple");
+                var inputType = isMultiple ? "checkbox" : "radio";
+                q.options.forEach(function(opt, optIdx) {
+                    var letter = String.fromCharCode(65 + optIdx);
+                    var displayOpt = (opt.match(/^[A-Z][\.\)\s]/)) ? opt : letter + ". " + opt;
+                    html += "<label><input type='" + inputType + "' name='question_" + index + "' value='" + letter + "'> " + displayOpt + "</label>";
+                });
+            }
+
+            // Hide answer
+            html += "<div class='feedback' id='feedback_" + index + "'></div>";
+            
+            html += "</div>"; // Close .question-block
+        });
+        
+        // Append a submit answers button
+        html += "<button id='submit-answers-btn' class='btn btn-success' style='width: 100%; padding: 12px; font-size: 16px; margin-top: 10px;'>🚀 Submit and View Results</button>";
+        html += "<br><br>";
+        return html;
+    }
+
+    function checkAnswers() {
+        var data = window.questionsData;
+        if (!data || !data.questions) {
+            alert("No question in system!");
+            return;
+        }
+
+        data.questions.forEach(function(q, index) {
+            var userAnswer;
+            if (q.type === "single" || q.type === "boolean") {
+                userAnswer = $("input[name='question_" + index + "']:checked").val();
+            } else if (q.type === "multiple") {
+                userAnswer = [];
+                $("input[name='question_" + index + "']:checked").each(function() {
+                    userAnswer.push($(this).val());
+                });
+            }
+
+            var isCorrect = false;
+            if (q.type === "multiple") {
+                if (userAnswer && userAnswer.length > 0 && q.answer && q.answer.length > 0) {
+                    var sortedUser = userAnswer.slice().sort();
+                    var sortedCorrect = q.answer.slice().sort();
+                    isCorrect = JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect);
+                }
+            } else {
+                isCorrect = (userAnswer === q.answer);
+            }
+
+            var feedbackDiv = $("#feedback_" + index);
+            feedbackDiv.removeClass("correct incorrect");
+
+            var feedbackHtml = "";
+            if (isCorrect) {
+                feedbackDiv.addClass("correct");
+                feedbackHtml += "<p><strong>✅ Correct！</strong></p>";
+            } else {
+                feedbackDiv.addClass("incorrect");
+                feedbackHtml += "<p><strong>❌ Wrong！</strong></p>";
+            }
+
+            feedbackHtml += "<p><strong>📌 Answer：</strong> " + (q.answer instanceof Array ? q.answer.join(", ") : q.answer) + "</p>";
+
+            if (q.explanation) {
+                feedbackHtml += "<p><strong>📖 Detail：</strong> " + q.explanation + "</p>";
+            }
+
+            feedbackDiv.html(feedbackHtml);
+            feedbackDiv.show();
+        });
+     }
+
+    // 將題目存入資料庫
+    $(document).on('click', '.save-question-btn', function() {
+        var btn = $(this);
+        var index = btn.data('index');
+        var questionData = window.questionsData.questions[index];
+        var directoryId = $('input[name="directory_id"]').val();
+        
+        if (directoryId) {
+            questionData['directory_id'] = directoryId;
+        }
+        
+        btn.prop('disabled', true);
+        
+        $.ajax({
+            url: "/api/save_question",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify(questionData),
+            success: function(response) {
+                if(response.success) {
+                    btn.text('⭐ Saved!');
+                    btn.css('color', '#ffc107'); // 黃色星星
+                    btn.css('font-weight', 'bold');
+                }
+            },
+            error: function(xhr) {
+                alert("收藏失敗：" + xhr.responseText);
+                btn.prop('disabled', false);
+            }
+        });
+    });
+
+    // Modal Request Logic
+    var modal = document.getElementById("preview-modal");
+    var span = document.getElementById("close-modal");
+
+    $('.preview-link').click(function(e) {
+        e.preventDefault();
+        var fileId = $(this).data('file-id');
+        var fileName = $(this).text();
+        $('#modal-title').text('Preview: ' + fileName);
+        $('#modal-body').html('<p style="text-align:center; padding: 20px;">Fetching file content...</p>');
+        modal.style.display = "block";
+        
+        $.ajax({
+            url: "/api/preview/" + fileId,
+            type: "GET",
+            success: function(response) {
+                if (response.type === "pdf") {
+                    $('#modal-body').html('<iframe src="' + response.url + '" style="width:100%; height:550px; border:none;"></iframe>');
+                } else if (response.type === "text") {
+                    $('#modal-body').html('<pre style="white-space:pre-wrap; word-wrap:break-word; background:#f4f4f4; padding:15px; border-radius:4px; font-family:inherit;">' + response.content + '</pre>');
+                } else if (response.type === "html") {
+                    var style = '<style>.mammoth-html table { border-collapse: collapse; width: 100%; margin-bottom: 20px; } .mammoth-html th, .mammoth-html td { border: 1px solid #ccc; padding: 10px; } .mammoth-html p { margin: 10px 0; } .mammoth-html h1, .mammoth-html h2, .mammoth-html h3 { margin-top: 20px; color: #333; }</style>';
+                    var htmlTemplate = '<div class="mammoth-html" style="background:#fff; padding:15px; border-radius:4px; font-family:inherit; overflow-x: auto; color:#333; line-height:1.6;">' + response.content + '</div>';
+                    $('#modal-body').html(style + htmlTemplate);
+                } else {
+                    $('#modal-body').html('<p style="color:red; text-align:center;">Unsupported file type preview.</p>');
+                }
+            },
+            error: function(xhr) {
+                $('#modal-body').html('<p style="color:red; text-align:center;">Failed to retrieve file content.</p>');
+            }
+        });
+    });
+
+    span.onclick = function() {
+        modal.style.display = "none";
+        $('#modal-body').html('');
+    }
+
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+            $('#modal-body').html('');
+        }
+    }
+
+    // Rename project function
+    function renameProject(projectId, oldName) {
+        var newName = prompt("請輸入新的專案名稱：", oldName);
+        if (newName !== null && newName.trim() !== "") {
+            document.getElementById('new-name-' + projectId).value = newName.trim();
+            document.getElementById('rename-form-' + projectId).submit();
+        }
+    }
+
+</script>
+{% endblock %}
